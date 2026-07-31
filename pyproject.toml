@@ -14,6 +14,7 @@ dependencies = [
     "nvidia-cuda-runtime-cu12",  # cudart64_12.dll — cuBLAS depends on it
     "nvidia-cublas-cu12",        # GPU BLAS for CTranslate2 (Windows needs the wheel)
     "nvidia-cudnn-cu12",         # cuDNN 9 for CTranslate2 CUDA 12
+    "pyside6>=6.6",              # overlay GUI (DD-03 / D-018): transparent, click-through
 ]
 
 [dependency-groups]
