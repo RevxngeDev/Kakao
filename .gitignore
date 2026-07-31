@@ -1,0 +1,48 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Virtual envs / uv ---
+.venv/
+uv.lock  # keep out until dependencies stabilize; remove this line to commit the lock
+
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Test / tooling caches ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Kakao-specific: never commit captured audio ---
+# Phase 1 dumps WAV files to verify capture. They are throwaway and may contain
+# whatever was playing on the system. They must never enter version control.
+*.wav
+
+# --- Models (downloaded, large, not source) ---
+models/
+*.bin
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# --- AI collaboration artifacts (kept local, never committed) ---
+CLAUDE.md
+AGENTS.md
+AGENT.md
+.claude/
+.cursor/
+.cursorrules
+.aider*
+.github/copilot-instructions.md
+docs/ai-context/
+KAKAO_MVP.md

@@ -1,0 +1,35 @@
+[project]
+name = "kakao"
+version = "0.0.0"
+description = "Real-time translated subtitles overlaid on any system audio (Windows MVP)."
+requires-python = ">=3.11"
+authors = [{ name = "andrespisa4" }]
+# Runtime dependencies are added in the phase that actually uses them, so no
+# unused dependency enters the project. See docs/ai-context/ROADMAP.md.
+dependencies = [
+    "numpy>=1.24",
+    "soundcard>=0.4",   # WASAPI loopback (DD-02 / D-011); imported only in kakao.audio
+    "silero-vad>=5",    # voice-activity segmentation (D-004 / D-013); pulls torch-CPU
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+# Throwaway Phase 0 measurement deps — kept OUT of [project].dependencies so the
+# runtime stays clean until the spike picks a model (DD-01). See ROADMAP.md.
+spike = [
+    "faster-whisper>=1.0",
+    "nvidia-ml-py>=12",
+    "nvidia-cuda-runtime-cu12",  # cudart64_12.dll — cuBLAS depends on it
+    "nvidia-cublas-cu12",        # GPU BLAS for CTranslate2 (Windows needs the wheel)
+    "nvidia-cudnn-cu12",         # cuDNN 9 for CTranslate2 CUDA 12
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kakao"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
