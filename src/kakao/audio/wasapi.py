@@ -21,15 +21,29 @@ _BLOCK = SAMPLE_RATE // 10  # 100 ms blocks
 _DEGRADED_HINTS = ("hands-free", "hands free", "hfp", "headset")
 
 
+def list_output_devices():
+    """Return [(label, id)] output devices; the first is the follow-default option."""
+    devices = [("Predeterminado (seguir cambios)", None)]
+    for speaker in soundcard.all_speakers():
+        devices.append((speaker.name, speaker.id))
+    return devices
+
+
 class WasapiLoopbackSource(AudioSource):
     """System-audio capture via `soundcard` WASAPI loopback."""
 
-    def __init__(self, block_frames: int = _BLOCK) -> None:
+    def __init__(self, block_frames: int = _BLOCK, device_id=None) -> None:
         self._block = block_frames
+        self._device_id = device_id  # None = default speaker (and follow changes)
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._t = 0.0  # seconds of audio delivered so far (frame timestamps)
         self._reported_degraded: set[str] = set()
+
+    def _resolve_speaker(self):
+        if self._device_id is None:
+            return soundcard.default_speaker()
+        return soundcard.get_speaker(self._device_id)
 
     # -- lifecycle ---------------------------------------------------------
     def start(self, on_frame: FrameCallback) -> None:
@@ -51,14 +65,15 @@ class WasapiLoopbackSource(AudioSource):
     # -- worker ------------------------------------------------------------
     def _run(self, on_frame: FrameCallback) -> None:
         while not self._stop.is_set():
-            speaker = soundcard.default_speaker()
+            speaker = self._resolve_speaker()
             loopback = soundcard.get_microphone(speaker.id, include_loopback=True)
             self._check_degraded(speaker.name)
             device_id = speaker.id
             try:
                 with loopback.recorder(samplerate=SAMPLE_RATE) as rec:
                     while not self._stop.is_set():
-                        if soundcard.default_speaker().id != device_id:
+                        # follow the default device only when not pinned to one
+                        if self._device_id is None and soundcard.default_speaker().id != device_id:
                             break  # default device changed -> reopen on the new one
                         block = rec.record(numframes=self._block)
                         mono = self._to_mono(block)

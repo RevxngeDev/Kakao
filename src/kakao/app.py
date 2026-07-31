@@ -1,10 +1,12 @@
-"""Kakao app entry point (Phase 4): live subtitles on a transparent overlay.
+"""Kakao app entry point.
 
-  uv run python -m kakao.app           # normal: click-through overlay + live pipeline
-  uv run python -m kakao.app --edit     # position/resize the overlay, close to save
-  uv run python -m kakao.app --smoke    # construct + render briefly, then quit (test)
+  uv run python -m kakao.app            # the app: tray icon + overlay (Phase 5)
+  uv run python -m kakao.app --edit      # just place/size the overlay, close to save
+  uv run python -m kakao.app --smoke     # construct UI briefly, then quit (test)
 
 Never opens the microphone (D-006). Source language pinned to Spanish (D-017).
+Start/stop, device and model are controlled from the tray icon and its settings
+window.
 """
 from __future__ import annotations
 
@@ -25,40 +27,28 @@ def main(argv=None) -> int:
 
     app = QApplication(sys.argv)
 
-    # The normal overlay is click-through and has no close button, so Ctrl+C in the
-    # terminal is the way to stop it. Qt's event loop otherwise swallows SIGINT, so
-    # route it to app.quit() and keep a heartbeat timer alive so Python can run the
-    # handler (the interpreter only processes signals between bytecode, not while
-    # blocked in the C++ event loop).
+    # Qt's event loop swallows SIGINT; route Ctrl+C to a clean quit and keep a
+    # heartbeat alive so Python can run the handler between event-loop iterations.
     signal.signal(signal.SIGINT, lambda *_: app.quit())
     heartbeat = QTimer()
     heartbeat.start(200)
     heartbeat.timeout.connect(lambda: None)
 
     settings = Settings()
-    overlay = Overlay(settings, edit=edit)
-    overlay.show()
 
+    if edit:  # standalone positioning tool
+        overlay = Overlay(settings, edit=True)
+        overlay.show()
+        return app.exec()
+
+    # Tray app: closing dialogs/windows must not quit — only the tray "Salir" does.
+    app.setQuitOnLastWindowClosed(False)
+    from kakao.ui import TrayController
+
+    controller = TrayController(app, settings)  # noqa: F841 (kept alive by reference)
     if smoke:
-        overlay.show_subtitle("Kakao overlay — español → English", 0.0)
-        QTimer.singleShot(1000, app.quit)
-        return app.exec()
-
-    pipeline = None
-    if not edit:
-        # imported here so --edit / --smoke don't spin up the ASR/audio stack
-        from kakao.audio.wasapi import WasapiLoopbackSource
-        from kakao.pipeline import Pipeline
-
-        source = WasapiLoopbackSource()
-        pipeline = Pipeline(source, overlay.show_subtitle, model="medium", language="es")
-        pipeline.start()
-
-    try:
-        return app.exec()
-    finally:
-        if pipeline is not None:
-            pipeline.stop()
+        QTimer.singleShot(1500, app.quit)
+    return app.exec()
 
 
 if __name__ == "__main__":

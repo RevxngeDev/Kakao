@@ -31,13 +31,17 @@ from kakao.settings import Settings
 _HOLD_MS = 6000  # clear a subtitle this long after it last updated
 
 
-def _set_windows_click_through(hwnd: int) -> None:
+def _set_windows_click_through(hwnd: int, enable: bool = True) -> None:
     GWL_EXSTYLE = -20
     WS_EX_LAYERED = 0x00080000
     WS_EX_TRANSPARENT = 0x00000020
     user32 = ctypes.windll.user32
     ex = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex | WS_EX_LAYERED | WS_EX_TRANSPARENT)
+    if enable:
+        ex |= WS_EX_LAYERED | WS_EX_TRANSPARENT
+    else:
+        ex = (ex | WS_EX_LAYERED) & ~WS_EX_TRANSPARENT
+    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex)
 
 
 class Overlay(QWidget):
@@ -49,6 +53,7 @@ class Overlay(QWidget):
         super().__init__()
         self._settings = settings
         self._edit = edit
+        self._standalone_edit = edit  # True only for the `--edit` launch (Esc closes)
         self._text = ""
         self._font_family = settings.get("overlay_font_family", "Segoe UI")
         self._font_size = int(settings.get("overlay_font_size", 28))
@@ -105,6 +110,24 @@ class Overlay(QWidget):
     def _save_geometry(self) -> None:
         g = self.geometry()
         self._settings.set("overlay_geometry", [g.x(), g.y(), g.width(), g.height()])
+
+    def set_edit(self, on: bool) -> None:
+        """Toggle edit mode live (used by the tray 'edit position' action)."""
+        self._edit = on
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, not on)
+        self.setFocusPolicy(Qt.StrongFocus if on else Qt.NoFocus)
+        if sys.platform == "win32":
+            _set_windows_click_through(int(self.winId()), enable=not on)
+        if on:
+            self.activateWindow()
+            self.raise_()
+        else:
+            self._save_geometry()
+        self.update()
+
+    def set_font_size(self, size: int) -> None:
+        self._font_size = int(size)
+        self.update()
 
     # -- painting ----------------------------------------------------------
     def paintEvent(self, event) -> None:
@@ -187,7 +210,10 @@ class Overlay(QWidget):
         if not self._edit:
             return
         if event.key() == Qt.Key_Escape:
-            self.close()  # closeEvent saves + quits edit mode
+            if self._standalone_edit:
+                self.close()      # `--edit` launch: Esc closes the app
+            else:
+                self.set_edit(False)  # live edit (tray): Esc returns to overlay
             return
         step = 10
         moves = {

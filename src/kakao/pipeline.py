@@ -18,6 +18,14 @@ from kakao.vad import SpeechChunk, VadSegmenter
 
 SubtitleCallback = Callable[[str, float], None]  # (english_text, lag_seconds)
 
+# Sync/quality presets: how aggressively the VAD cuts. Shorter max + silence =>
+# subtitles appear sooner (better sync) at the cost of splitting long sentences.
+SYNC_PRESETS = {
+    "fast": {"max_chunk_s": 4.0, "min_silence_ms": 200},
+    "balanced": {"max_chunk_s": 6.0, "min_silence_ms": 250},
+    "accurate": {"max_chunk_s": 15.0, "min_silence_ms": 300},
+}
+
 
 class Pipeline:
     """Wires capture, segmentation, a bounded queue and threaded ASR together."""
@@ -31,14 +39,20 @@ class Pipeline:
         language: Optional[str] = None,  # None = auto-detect+lock; "es" to pin (D-017)
         max_lag_s: float = 3.0,   # D-010 drop threshold
         queue_size: int = 8,
+        max_chunk_s: float = 6.0,     # sync preset: balanced (D-021)
+        min_silence_ms: int = 250,
         asr=None,                 # injectable for tests
+        on_error: Optional[Callable[[str], None]] = None,  # called on ASR failure (any thread)
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._source = source
         self._on_subtitle = on_subtitle
+        self._on_error = on_error
         self._model = model
         self._language = language
         self._max_lag = max_lag_s
+        self._max_chunk_s = max_chunk_s
+        self._min_silence_ms = min_silence_ms
         self._clock = clock
         self._queue: DropOldestQueue[SpeechChunk] = DropOldestQueue(queue_size)
         self._asr = asr
@@ -51,7 +65,11 @@ class Pipeline:
     def start(self) -> None:
         if self._asr is None:
             self._asr = AsrEngine(self._model, language=self._language)  # load before capture
-        self._segmenter = VadSegmenter(self._queue.put)  # loads Silero once
+        self._segmenter = VadSegmenter(  # loads Silero once
+            self._queue.put,
+            max_chunk_s=self._max_chunk_s,
+            min_silence_ms=self._min_silence_ms,
+        )
         self._stop.clear()
         self._t0 = self._clock()
         self._worker = threading.Thread(target=self._run, name="asr-worker", daemon=True)
@@ -86,6 +104,11 @@ class Pipeline:
         if lag > self._max_lag:            # already stale -> drop (D-005 / D-010)
             self.dropped_stale += 1
             return
-        text = self._asr.translate(chunk.pcm)
+        try:
+            text = self._asr.translate(chunk.pcm)
+        except Exception as exc:  # e.g. CUDA OOM mid-run: surface it, keep the app alive
+            if self._on_error is not None:
+                self._on_error(str(exc))
+            return
         if text:
             self._on_subtitle(text, lag)
