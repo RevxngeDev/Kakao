@@ -446,8 +446,12 @@ name = "kakao"
 version = "0.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "faster-whisper" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "nvidia-cublas-cu12" },
+    { name = "nvidia-cuda-runtime-cu12" },
+    { name = "nvidia-cudnn-cu12" },
     { name = "silero-vad" },
     { name = "soundcard" },
 ]
@@ -457,29 +461,23 @@ dev = [
     { name = "pytest" },
 ]
 spike = [
-    { name = "faster-whisper" },
-    { name = "nvidia-cublas-cu12" },
-    { name = "nvidia-cuda-runtime-cu12" },
-    { name = "nvidia-cudnn-cu12" },
     { name = "nvidia-ml-py" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "faster-whisper", specifier = ">=1.0" },
     { name = "numpy", specifier = ">=1.24" },
+    { name = "nvidia-cublas-cu12" },
+    { name = "nvidia-cuda-runtime-cu12" },
+    { name = "nvidia-cudnn-cu12" },
     { name = "silero-vad", specifier = ">=5" },
     { name = "soundcard", specifier = ">=0.4" },
 ]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]
-spike = [
-    { name = "faster-whisper", specifier = ">=1.0" },
-    { name = "nvidia-cublas-cu12" },
-    { name = "nvidia-cuda-runtime-cu12" },
-    { name = "nvidia-cudnn-cu12" },
-    { name = "nvidia-ml-py", specifier = ">=12" },
-]
+spike = [{ name = "nvidia-ml-py", specifier = ">=12" }]
 
 [[package]]
 name = "markupsafe"
