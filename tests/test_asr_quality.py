@@ -76,6 +76,31 @@ def test_context_is_bounded(monkeypatch):
     assert len(model.prompts[1]) <= config.CONTEXT_CHARS
 
 
+def test_model_is_cached_and_evicted_on_change(monkeypatch):
+    """Warm cache makes restarts instant; only ONE model is held (4 GB VRAM)."""
+    import kakao.asr as asr_module
+
+    built = []
+
+    class _FakeWhisper:
+        def __init__(self, name, device=None, compute_type=None):
+            built.append(name)
+
+    monkeypatch.setattr(asr_module, "_cached_key", None, raising=False)
+    monkeypatch.setattr(asr_module, "_cached_model", None, raising=False)
+    monkeypatch.setitem(
+        __import__("sys").modules, "faster_whisper",
+        type("M", (), {"WhisperModel": _FakeWhisper}),
+    )
+
+    first = asr_module.load_model("medium", "cuda", "int8")
+    again = asr_module.load_model("medium", "cuda", "int8")
+    assert again is first and built == ["medium"]      # reused, not reloaded
+
+    other = asr_module.load_model("small", "cuda", "int8")
+    assert other is not first and built == ["medium", "small"]  # evicted + reloaded
+
+
 def test_repeated_output_is_suppressed(monkeypatch):
     """Prompting makes Whisper parrot the context back; don't show it twice."""
     engine, _ = _engine(monkeypatch, ["We are going to mix.", "we are going to mix!", "New line."])

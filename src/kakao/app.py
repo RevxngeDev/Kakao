@@ -45,7 +45,8 @@ def main(argv=None) -> int:
     app.setQuitOnLastWindowClosed(False)
     from kakao.ui import TrayController
 
-    controller = TrayController(app, settings)  # noqa: F841 (kept alive by reference)
+    # --smoke checks the UI wiring only; skip the preload so it stays fast.
+    controller = TrayController(app, settings, preload=not smoke)  # noqa: F841 (kept alive)
     if smoke:
         QTimer.singleShot(1500, app.quit)
     return app.exec()

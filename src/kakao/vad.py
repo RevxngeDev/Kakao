@@ -44,7 +44,8 @@ ChunkCallback = Callable[[SpeechChunk], None]
 _silero_model = None  # cached across pipeline restarts so Start is fast (D-025)
 
 
-def _load_silero():
+def load_silero():
+    """Load (and cache) the Silero model. Public so the UI can preload it."""
     global _silero_model
     if _silero_model is None:
         from silero_vad import load_silero_vad
@@ -57,7 +58,7 @@ def _default_vad(threshold: float, min_silence_ms: int, speech_pad_ms: int) -> V
     from silero_vad import VADIterator  # lazy: avoids torch on import
 
     it = VADIterator(
-        _load_silero(),
+        load_silero(),
         threshold=threshold,
         sampling_rate=SAMPLE_RATE,
         min_silence_duration_ms=min_silence_ms,

@@ -7,6 +7,8 @@ worker threads are marshalled to the GUI thread via Qt signals.
 """
 from __future__ import annotations
 
+import threading
+
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
@@ -19,7 +21,7 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
 )
 
-from kakao import config
+from kakao import asr, config, vad
 from kakao.audio.wasapi import WasapiLoopbackSource, list_output_devices
 from kakao.overlay import Overlay
 from kakao.pipeline import Pipeline
@@ -100,13 +102,17 @@ class TrayController(QObject):
 
     _error_sig = Signal(str)
     _degraded_sig = Signal(str)
+    _notify_sig = Signal(str)        # notification raised from a worker thread
+    _started_sig = Signal(object)    # the started Pipeline, or None if it failed
 
-    def __init__(self, app, settings: Settings) -> None:
+    def __init__(self, app, settings: Settings, preload: bool = True) -> None:
         super().__init__()
         self._app = app
         self._settings = settings
         self._pipeline = None
         self._last_dropped = 0
+        self._starting = False
+        self._preloaded = threading.Event()
 
         self._overlay = Overlay(settings, edit=False)
         self._overlay.show()
@@ -132,9 +138,32 @@ class TrayController(QObject):
 
         self._error_sig.connect(self._show_error)
         self._degraded_sig.connect(lambda m: self._notify(m, title="Kakao — audio"))
+        self._notify_sig.connect(self._notify)
+        self._started_sig.connect(self._on_started)
         self._health = QTimer(self)
         self._health.timeout.connect(self._check_health)
         self._health.start(5000)
+
+        if preload:
+            # Load the model NOW, in the background: measured ~10 s the first time
+            # (import faster_whisper 4.9 s + weights 5.3 s). Doing it while the user
+            # sets up their video makes the first Iniciar instant (D-027).
+            threading.Thread(target=self._preload, name="model-preload", daemon=True).start()
+        else:
+            self._preloaded.set()
+
+    def _preload(self) -> None:
+        try:
+            self._notify_sig.emit("Preparando el modelo…")
+            asr.load_model(
+                self._settings.get("model", config.MODEL), config.DEVICE, config.COMPUTE_TYPE
+            )
+            vad.load_silero()
+            self._notify_sig.emit("Listo para traducir.")
+        except Exception as exc:  # surfaced, but the app stays usable
+            self._error_sig.emit(str(exc))
+        finally:
+            self._preloaded.set()
 
     def _notify(
         self, msg: str, *, title: str = "Kakao", color: str = ICON_IDLE, ms: int = 4000
@@ -143,31 +172,54 @@ class TrayController(QObject):
 
     # -- tray actions ------------------------------------------------------
     def toggle(self) -> None:
+        if self._starting:
+            return
         if self._pipeline is not None:
             self.stop()
         else:
             self.start()
 
     def start(self) -> None:
+        """Start translating. Runs off the GUI thread so the UI never freezes."""
+        if self._starting or self._pipeline is not None:
+            return
+        self._starting = True
+        self._act_toggle.setEnabled(False)
+        self._act_toggle.setText("Iniciando…")
+        if not self._preloaded.is_set():
+            self._notify("Terminando de preparar el modelo…", ms=3000)
+        threading.Thread(target=self._start_worker, name="pipeline-start", daemon=True).start()
+
+    def _start_worker(self) -> None:
         try:
-            model = self._settings.get("model", config.MODEL)
             preset = config.SYNC_PRESETS.get(
                 self._settings.get("sync", config.SYNC), config.SYNC_PRESETS[config.SYNC]
             )
             source = WasapiLoopbackSource(device_id=self._settings.get("device_id"))
             source.on_degraded = self._degraded_sig.emit
-            self._pipeline = Pipeline(
-                source, self._overlay.show_subtitle, model=model,
+            pipeline = Pipeline(
+                source, self._overlay.show_subtitle,
+                model=self._settings.get("model", config.MODEL),
                 on_error=self._error_sig.emit, **preset,
             )
-            self._pipeline.start()
-            self._last_dropped = 0
-            self._act_toggle.setText("Detener")
-            self._tray.setIcon(_icon(ICON_RUNNING))
-            self._notify(f"Traduciendo (modelo {model}).", ms=3000)
+            pipeline.start()  # blocks on the model load if the preload is still running
+            self._started_sig.emit(pipeline)
         except Exception as exc:
-            self._pipeline = None
-            self._show_error(_humanize(str(exc)))
+            self._started_sig.emit(None)
+            self._error_sig.emit(_humanize(str(exc)))
+
+    def _on_started(self, pipeline) -> None:
+        """Back on the GUI thread: adopt the pipeline and update the tray."""
+        self._starting = False
+        self._act_toggle.setEnabled(True)
+        if pipeline is None:
+            self._act_toggle.setText("Iniciar")
+            return
+        self._pipeline = pipeline
+        self._last_dropped = 0
+        self._act_toggle.setText("Detener")
+        self._tray.setIcon(_icon(ICON_RUNNING))
+        self._notify(f"Traduciendo (modelo {self._settings.get('model', config.MODEL)}).", ms=3000)
 
     def stop(self) -> None:
         if self._pipeline is not None:
