@@ -60,7 +60,7 @@ def test_forced_cut_on_long_speech_keeps_overlap_and_coverage():
 
     assert len(chunks) >= 2  # long speech was force-cut into several chunks
     # consecutive chunks overlap (no audio lost between them at the cuts)
-    for prev, nxt in zip(chunks, chunks[1:]):
+    for prev, nxt in zip(chunks, chunks[1:], strict=False):
         assert nxt.start <= prev.end
     # coverage from the very start to the end of what was fed
     assert chunks[0].start == pytest.approx(0.0)

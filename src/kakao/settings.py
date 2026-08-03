@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
-from typing import Any, Optional
+from typing import Any
 
 
 def _default_path() -> pathlib.Path:
@@ -19,7 +19,7 @@ def _default_path() -> pathlib.Path:
 class Settings:
     """Dict-like settings backed by a JSON file; writes on every `set`."""
 
-    def __init__(self, path: Optional[os.PathLike] = None) -> None:
+    def __init__(self, path: os.PathLike | None = None) -> None:
         self._path = pathlib.Path(path) if path is not None else _default_path()
         self._data: dict[str, Any] = self._read()
 

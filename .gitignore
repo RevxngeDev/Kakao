@@ -47,3 +47,8 @@ AGENT.md
 docs/ai-context/
 KAKAO_MVP.md
 scripts/
+
+# --- Local safety snapshots ---
+# Full copies of a known-good state. Never commit them: they would put a second,
+# divergent copy of src/ in the repo. Git history/tags are the real mechanism.
+backups/

@@ -7,19 +7,23 @@ worker threads are marshalled to the GUI thread via Qt signals.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QFormLayout, QMenu, QPushButton, QSpinBox, QSystemTrayIcon,
+    QComboBox,
+    QDialog,
+    QFormLayout,
+    QMenu,
+    QPushButton,
+    QSpinBox,
+    QSystemTrayIcon,
 )
 
+from kakao import config
 from kakao.audio.wasapi import WasapiLoopbackSource, list_output_devices
 from kakao.overlay import Overlay
-from kakao.pipeline import SYNC_PRESETS, Pipeline
+from kakao.pipeline import Pipeline
 from kakao.settings import Settings
-
-_MODELS = ["medium", "small"]  # D-009: chosen + fallback
-_SYNC = [("Equilibrado", "balanced"), ("Más rápido", "fast"), ("Más preciso", "accurate")]
 
 
 def _humanize(err: str) -> str:
@@ -31,7 +35,12 @@ def _humanize(err: str) -> str:
     return f"Error: {err}"
 
 
-def _icon(color: str = "#3aa0ff") -> QIcon:
+ICON_IDLE = "#3aa0ff"
+ICON_RUNNING = "#33cc66"
+ICON_ERROR = "#e05555"
+
+
+def _icon(color: str = ICON_IDLE) -> QIcon:
     pix = QPixmap(64, 64)
     pix.fill(QColor(0, 0, 0, 0))
     painter = QPainter(pix)
@@ -58,20 +67,20 @@ class SettingsDialog(QDialog):
         form.addRow("Dispositivo de salida:", self._device)
 
         self._model = QComboBox()
-        self._model.addItems(_MODELS)
-        self._model.setCurrentText(settings.get("model", "medium"))
+        self._model.addItems(config.MODELS)
+        self._model.setCurrentText(settings.get("model", config.MODEL))
         form.addRow("Modelo:", self._model)
 
         self._sync = QComboBox()
-        for label, key in _SYNC:
+        for label, key in config.SYNC_LABELS:
             self._sync.addItem(label, key)
-        sync_idx = self._sync.findData(settings.get("sync", "balanced"))
+        sync_idx = self._sync.findData(settings.get("sync", config.SYNC))
         self._sync.setCurrentIndex(sync_idx if sync_idx >= 0 else 0)
         form.addRow("Sincronización:", self._sync)
 
         self._font = QSpinBox()
         self._font.setRange(12, 72)
-        self._font.setValue(int(settings.get("overlay_font_size", 28)))
+        self._font.setValue(int(settings.get("overlay_font_size", config.FONT_SIZE)))
         form.addRow("Tamaño de letra:", self._font)
 
         save = QPushButton("Guardar")
@@ -119,33 +128,43 @@ class TrayController(QObject):
         menu.addAction(act_quit)
         self._tray.setContextMenu(menu)
         self._tray.show()
-        self._tray.showMessage("Kakao", "Listo. Clic derecho en el icono para iniciar.", _icon(), 4000)
+        self._notify("Listo. Clic derecho en el icono para iniciar.")
 
         self._error_sig.connect(self._show_error)
-        self._degraded_sig.connect(lambda m: self._tray.showMessage("Kakao — audio", m, _icon(), 4000))
+        self._degraded_sig.connect(lambda m: self._notify(m, title="Kakao — audio"))
         self._health = QTimer(self)
         self._health.timeout.connect(self._check_health)
         self._health.start(5000)
 
+    def _notify(
+        self, msg: str, *, title: str = "Kakao", color: str = ICON_IDLE, ms: int = 4000
+    ) -> None:
+        self._tray.showMessage(title, msg, _icon(color), ms)
+
     # -- tray actions ------------------------------------------------------
     def toggle(self) -> None:
-        self.stop() if self._pipeline is not None else self.start()
+        if self._pipeline is not None:
+            self.stop()
+        else:
+            self.start()
 
     def start(self) -> None:
         try:
-            model = self._settings.get("model", "medium")
-            preset = SYNC_PRESETS.get(self._settings.get("sync", "balanced"), SYNC_PRESETS["balanced"])
+            model = self._settings.get("model", config.MODEL)
+            preset = config.SYNC_PRESETS.get(
+                self._settings.get("sync", config.SYNC), config.SYNC_PRESETS[config.SYNC]
+            )
             source = WasapiLoopbackSource(device_id=self._settings.get("device_id"))
             source.on_degraded = self._degraded_sig.emit
             self._pipeline = Pipeline(
-                source, self._overlay.show_subtitle, model=model, language="es",
+                source, self._overlay.show_subtitle, model=model,
                 on_error=self._error_sig.emit, **preset,
             )
             self._pipeline.start()
             self._last_dropped = 0
             self._act_toggle.setText("Detener")
-            self._tray.setIcon(_icon("#33cc66"))
-            self._tray.showMessage("Kakao", f"Traduciendo (modelo {model}).", _icon(), 3000)
+            self._tray.setIcon(_icon(ICON_RUNNING))
+            self._notify(f"Traduciendo (modelo {model}).", ms=3000)
         except Exception as exc:
             self._pipeline = None
             self._show_error(_humanize(str(exc)))
@@ -156,20 +175,19 @@ class TrayController(QObject):
             self._pipeline = None
         self._overlay.show_subtitle("")
         self._act_toggle.setText("Iniciar")
-        self._tray.setIcon(_icon("#3aa0ff"))
+        self._tray.setIcon(_icon(ICON_IDLE))
 
     def edit_position(self) -> None:
         self._overlay.set_edit(True)
-        self._tray.showMessage("Kakao", "Arrastra o usa las flechas; Esc para terminar.", _icon(), 3000)
+        self._notify("Arrastra o usa las flechas; Esc para terminar.", ms=3000)
 
     def open_settings(self) -> None:
         dialog = SettingsDialog(self._settings)
         if dialog.exec():
-            self._overlay.set_font_size(int(self._settings.get("overlay_font_size", 28)))
+            font = int(self._settings.get("overlay_font_size", config.FONT_SIZE))
+            self._overlay.set_font_size(font)
             if self._pipeline is not None:
-                self._tray.showMessage(
-                    "Kakao", "Detén e inicia para aplicar el modelo/dispositivo.", _icon(), 4000
-                )
+                self._notify("Detén e inicia para aplicar el modelo/dispositivo.")
 
     def quit(self) -> None:
         self.stop()
@@ -177,12 +195,12 @@ class TrayController(QObject):
 
     # -- notifications (marshalled to the GUI thread by the signals) -------
     def _show_error(self, msg: str) -> None:
-        self._tray.showMessage("Kakao — error", _humanize(msg), _icon("#e05555"), 6000)
+        self._notify(_humanize(msg), title="Kakao — error", color=ICON_ERROR, ms=6000)
 
     def _check_health(self) -> None:
         if self._pipeline is None:
             return
         dropped = self._pipeline.dropped
         if dropped - self._last_dropped >= 3:
-            self._tray.showMessage("Kakao", "Va con retraso; se descartan subtítulos.", _icon(), 4000)
+            self._notify("Va con retraso; se descartan subtítulos.")
         self._last_dropped = dropped

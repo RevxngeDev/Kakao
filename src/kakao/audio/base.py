@@ -8,8 +8,8 @@ output endpoint only.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 import numpy as np
 
@@ -50,9 +50,9 @@ class AudioSource(ABC):
     """
 
     #: called (from the worker thread) after the output device changes and capture resumes
-    on_device_change: Optional[Notify] = None
+    on_device_change: Notify | None = None
     #: called when capture quality degrades (e.g. Bluetooth hands-free profile)
-    on_degraded: Optional[Notify] = None
+    on_degraded: Notify | None = None
 
     @abstractmethod
     def start(self, on_frame: FrameCallback) -> None:

@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
+from kakao import config
 from kakao.asr import AsrEngine
 from kakao.audio.base import AudioSource
 from kakao.buffer import DropOldestQueue
@@ -18,13 +19,11 @@ from kakao.vad import SpeechChunk, VadSegmenter
 
 SubtitleCallback = Callable[[str, float], None]  # (english_text, lag_seconds)
 
-# Sync/quality presets: how aggressively the VAD cuts. Shorter max + silence =>
-# subtitles appear sooner (better sync) at the cost of splitting long sentences.
-SYNC_PRESETS = {
-    "fast": {"max_chunk_s": 4.0, "min_silence_ms": 200},
-    "balanced": {"max_chunk_s": 6.0, "min_silence_ms": 250},
-    "accurate": {"max_chunk_s": 15.0, "min_silence_ms": 300},
-}
+SYNC_PRESETS = config.SYNC_PRESETS  # re-exported for convenience
+
+# A silence longer than this ends the "scene": the rolling ASR context is reset so
+# a new conversation is not conditioned on an unrelated one (D-025).
+_CONTEXT_RESET_GAP_S = 8.0
 
 
 class Pipeline:
@@ -35,14 +34,14 @@ class Pipeline:
         source: AudioSource,
         on_subtitle: SubtitleCallback,
         *,
-        model: str = "medium",
-        language: Optional[str] = None,  # None = auto-detect+lock; "es" to pin (D-017)
-        max_lag_s: float = 3.0,   # D-010 drop threshold
-        queue_size: int = 8,
-        max_chunk_s: float = 6.0,     # sync preset: balanced (D-021)
-        min_silence_ms: int = 250,
+        model: str = config.MODEL,
+        language: str | None = config.LANGUAGE,
+        max_lag_s: float = config.MAX_LAG_S,
+        queue_size: int = config.QUEUE_SIZE,
+        max_chunk_s: float = config.SYNC_PRESETS[config.SYNC]["max_chunk_s"],
+        min_silence_ms: int = config.SYNC_PRESETS[config.SYNC]["min_silence_ms"],
         asr=None,                 # injectable for tests
-        on_error: Optional[Callable[[str], None]] = None,  # called on ASR failure (any thread)
+        on_error: Callable[[str], None] | None = None,  # called on ASR failure (any thread)
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._source = source
@@ -56,10 +55,11 @@ class Pipeline:
         self._clock = clock
         self._queue: DropOldestQueue[SpeechChunk] = DropOldestQueue(queue_size)
         self._asr = asr
-        self._segmenter: Optional[VadSegmenter] = None
-        self._worker: Optional[threading.Thread] = None
+        self._segmenter: VadSegmenter | None = None
+        self._worker: threading.Thread | None = None
         self._stop = threading.Event()
         self._t0 = 0.0
+        self._last_chunk_end = 0.0
         self.dropped_stale = 0
 
     def start(self) -> None:
@@ -104,6 +104,9 @@ class Pipeline:
         if lag > self._max_lag:            # already stale -> drop (D-005 / D-010)
             self.dropped_stale += 1
             return
+        if chunk.start - self._last_chunk_end > _CONTEXT_RESET_GAP_S:
+            self._asr.reset_context()      # new scene: don't carry stale context
+        self._last_chunk_end = chunk.end
         try:
             text = self._asr.translate(chunk.pcm)
         except Exception as exc:  # e.g. CUDA OOM mid-run: surface it, keep the app alive

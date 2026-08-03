@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import threading
 from collections import deque
-from typing import Deque, Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
 
@@ -21,7 +21,7 @@ class DropOldestQueue(Generic[T]):
         if maxsize < 1:
             raise ValueError("maxsize must be >= 1")
         self._maxsize = maxsize
-        self._dq: Deque[T] = deque()
+        self._dq: deque[T] = deque()
         self._cond = threading.Condition()
         self._dropped = 0
 
@@ -34,7 +34,7 @@ class DropOldestQueue(Generic[T]):
             self._dq.append(item)
             self._cond.notify()
 
-    def get(self, timeout: Optional[float] = None) -> Optional[T]:
+    def get(self, timeout: float | None = None) -> T | None:
         """Pop the oldest item, waiting up to `timeout` s; None if none arrives."""
         with self._cond:
             if not self._dq and not self._cond.wait_for(lambda: bool(self._dq), timeout):

@@ -12,8 +12,8 @@ loading the model: pass any `vad` callable mapping a 512-sample window to
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 import numpy as np
 
@@ -21,7 +21,7 @@ from kakao.audio.base import SAMPLE_RATE, AudioFrame
 
 WINDOW = 512  # Silero VAD window at 16 kHz (samples)
 
-VadEvent = Optional[dict]
+VadEvent = dict | None
 Vad = Callable[[np.ndarray], VadEvent]
 
 
@@ -41,12 +41,23 @@ class SpeechChunk:
 ChunkCallback = Callable[[SpeechChunk], None]
 
 
+_silero_model = None  # cached across pipeline restarts so Start is fast (D-025)
+
+
+def _load_silero():
+    global _silero_model
+    if _silero_model is None:
+        from silero_vad import load_silero_vad
+        _silero_model = load_silero_vad()
+    return _silero_model
+
+
 def _default_vad(threshold: float, min_silence_ms: int, speech_pad_ms: int) -> Vad:
-    from silero_vad import VADIterator, load_silero_vad  # lazy: avoids torch on import
     import torch
+    from silero_vad import VADIterator  # lazy: avoids torch on import
 
     it = VADIterator(
-        load_silero_vad(),
+        _load_silero(),
         threshold=threshold,
         sampling_rate=SAMPLE_RATE,
         min_silence_duration_ms=min_silence_ms,
@@ -72,19 +83,19 @@ class VadSegmenter:
         overlap_ms: int = 200,
         max_chunk_s: float = 15.0,
         min_chunk_s: float = 0.2,
-        vad: Optional[Vad] = None,
+        vad: Vad | None = None,
     ) -> None:
         self._on_chunk = on_chunk
         self._overlap = int(overlap_ms / 1000 * SAMPLE_RATE)
         self._max = int(max_chunk_s * SAMPLE_RATE)
         self._min = int(min_chunk_s * SAMPLE_RATE)
-        self._vad = vad if vad is not None else _default_vad(threshold, min_silence_ms, speech_pad_ms)
+        self._vad = vad or _default_vad(threshold, min_silence_ms, speech_pad_ms)
 
         self._accum = np.zeros(0, dtype=np.float32)   # pending samples (< WINDOW after draining)
         self._retain = np.zeros(0, dtype=np.float32)  # retained raw audio for extraction
         self._base = 0                                # absolute index of _retain[0]
         self._pos = 0                                 # absolute samples fed to the VAD
-        self._active_start: Optional[int] = None      # start of the in-progress speech
+        self._active_start: int | None = None      # start of the in-progress speech
 
     def feed(self, frame: AudioFrame) -> None:
         """Feed one AudioFrame; emits chunks via the callback as they complete."""
@@ -113,9 +124,10 @@ class VadSegmenter:
             self._active_start = None
 
         # Force a cut if speech runs past max_chunk without a silence (D-004).
-        if self._active_start is not None and (self._pos + WINDOW - self._active_start) >= self._max:
+        active = self._active_start
+        if active is not None and (self._pos + WINDOW - active) >= self._max:
             cut = self._pos + WINDOW
-            self._emit(self._active_start, cut)
+            self._emit(active, cut)
             self._active_start = cut - self._overlap  # carry overlap into the next chunk
 
     def _emit(self, start: int, end: int) -> None:

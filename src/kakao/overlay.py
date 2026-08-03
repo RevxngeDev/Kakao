@@ -26,9 +26,8 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
+from kakao import config
 from kakao.settings import Settings
-
-_HOLD_MS = 6000  # clear a subtitle this long after it last updated
 
 
 def _set_windows_click_through(hwnd: int, enable: bool = True) -> None:
@@ -55,8 +54,8 @@ class Overlay(QWidget):
         self._edit = edit
         self._standalone_edit = edit  # True only for the `--edit` launch (Esc closes)
         self._text = ""
-        self._font_family = settings.get("overlay_font_family", "Segoe UI")
-        self._font_size = int(settings.get("overlay_font_size", 28))
+        self._font_family = settings.get("overlay_font_family", config.FONT_FAMILY)
+        self._font_size = int(settings.get("overlay_font_size", config.FONT_SIZE))
         self._drag_from = None
         self._start_geo = None
         self._resizing = False
@@ -71,10 +70,9 @@ class Overlay(QWidget):
             self.setFocusPolicy(Qt.NoFocus)
 
         geo = settings.get("overlay_geometry")
-        if isinstance(geo, (list, tuple)) and len(geo) == 4:
-            self.setGeometry(*geo)
-        else:
-            self.setGeometry(120, 680, 1200, 220)
+        if not (isinstance(geo, (list, tuple)) and len(geo) == 4):
+            geo = config.DEFAULT_GEOMETRY
+        self.setGeometry(*geo)
 
         self.subtitle_received.connect(self._set_text)
         self._clear = QTimer(self)
@@ -87,7 +85,7 @@ class Overlay(QWidget):
 
     def _set_text(self, text: str) -> None:
         self._text = text
-        self._clear.start(_HOLD_MS)
+        self._clear.start(config.SUBTITLE_HOLD_MS)
         self.update()
 
     def _do_clear(self) -> None:
@@ -197,7 +195,10 @@ class Overlay(QWidget):
         delta = event.globalPosition().toPoint() - self._drag_from
         g = self._start_geo
         if self._resizing:
-            self.setGeometry(g.x(), g.y(), max(240, g.width() + delta.x()), max(80, g.height() + delta.y()))
+            self.setGeometry(
+                g.x(), g.y(),
+                max(240, g.width() + delta.x()), max(80, g.height() + delta.y()),
+            )
         else:
             self.move(g.x() + delta.x(), g.y() + delta.y())
 

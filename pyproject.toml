@@ -32,3 +32,12 @@ packages = ["src/kakao"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "B", "C4", "SIM", "RET", "UP"]
+# ARG002: Qt overrides must keep the framework's signature even when unused.
+ignore = ["ARG002", "B008"]
