@@ -113,5 +113,7 @@ class Pipeline:
             if self._on_error is not None:
                 self._on_error(str(exc))
             return
-        if text:
+        # Inference can outlive stop() (a chunk may be mid-flight). Emitting then
+        # would paint a ghost subtitle after the user pressed Detener.
+        if text and not self._stop.is_set():
             self._on_subtitle(text, lag)

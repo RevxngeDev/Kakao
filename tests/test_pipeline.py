@@ -62,6 +62,15 @@ def test_skips_empty_translation():
     assert asr.calls == 1
 
 
+def test_no_subtitle_is_emitted_after_stop():
+    """Inference can outlive stop(); it must not paint a ghost subtitle."""
+    p, asr, out = _pipeline("hi", now=[10.0])
+    p._stop.set()                       # user pressed Detener while a chunk was in flight
+    p._handle(_chunk(end=9.0))          # fresh enough, but the pipeline is stopping
+    assert out == []
+    assert asr.calls == 1               # it did the work; it just did not emit
+
+
 def test_resets_context_after_a_long_gap():
     p, asr, out = _pipeline("hi", now=[100.0], max_lag=1000)
     p._handle(_chunk(end=2.0))          # continuous -> no reset

@@ -79,6 +79,13 @@ class Overlay(QWidget):
         self._clear.setSingleShot(True)
         self._clear.timeout.connect(self._do_clear)
 
+        # Holding an arrow key would otherwise rewrite settings.json on every
+        # repeat; coalesce the writes into one after the movement settles.
+        self._geo_save = QTimer(self)
+        self._geo_save.setSingleShot(True)
+        self._geo_save.setInterval(400)
+        self._geo_save.timeout.connect(self._save_geometry)
+
     # -- pipeline entry point (thread-safe) --------------------------------
     def show_subtitle(self, text: str, lag: float = 0.0) -> None:
         self.subtitle_received.emit(text)
@@ -106,6 +113,7 @@ class Overlay(QWidget):
         super().closeEvent(event)
 
     def _save_geometry(self) -> None:
+        self._geo_save.stop()  # drop any pending debounced save; this one covers it
         g = self.geometry()
         self._settings.set("overlay_geometry", [g.x(), g.y(), g.width(), g.height()])
 
@@ -224,4 +232,4 @@ class Overlay(QWidget):
         if event.key() in moves:
             dx, dy = moves[event.key()]
             self.move(self.x() + dx, self.y() + dy)
-            self._save_geometry()
+            self._geo_save.start()  # debounced; see _geo_save

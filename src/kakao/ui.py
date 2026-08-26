@@ -90,10 +90,12 @@ class SettingsDialog(QDialog):
         form.addRow(save)
 
     def _save(self) -> None:
-        self._settings.set("device_id", self._device.currentData())
-        self._settings.set("model", self._model.currentText())
-        self._settings.set("sync", self._sync.currentData())
-        self._settings.set("overlay_font_size", self._font.value())
+        self._settings.update({          # one write, not four
+            "device_id": self._device.currentData(),
+            "model": self._model.currentText(),
+            "sync": self._sync.currentData(),
+            "overlay_font_size": self._font.value(),
+        })
         self.accept()
 
 
