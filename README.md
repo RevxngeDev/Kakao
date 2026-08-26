@@ -65,7 +65,18 @@ tray icon → Iniciar** and play your video.
 | **Ajustes…** | Output device, model, sync preset, font size |
 | **Salir** | Quit |
 
+**Ctrl+Alt+K** toggles start/stop from anywhere, without going to the tray. If
+another app already owns that combination, Kakao says so at startup instead of
+silently losing the shortcut.
+
 Settings persist in `%APPDATA%/Kakao/settings.json`.
+
+### Models
+
+`Ajustes…` offers `small`, `medium` (default) and `large-v3`. Bigger is **not**
+reliably better here: on the clips measured, `large-v3` cost ~1 GB more VRAM and
+did not translate better than `medium`. It is offered so you can judge it on your
+own content.
 
 ### Sync presets
 
@@ -141,13 +152,18 @@ Stated plainly rather than hidden:
 - **Sung music gets garbled** — it passes the VAD as speech and the model mangles it.
 - **~0.5 s of dead air** when you switch audio device mid-playback. Most of it is
   Windows re-routing the endpoint; capture recovers automatically.
-- **Individual words are still mistranslated** sometimes.
+- **Individual words are still mistranslated** sometimes, and occasionally a whole
+  phrase is invented. This is the main open problem. Importantly, these are
+  **confident** errors — the model reports normal confidence while being wrong — so
+  filtering by confidence does not catch them (measured, not assumed). Five
+  approaches have been tried against it and four made things worse; see
+  `docs/research/` and DECISIONS.md.
 - **No `.exe` yet** — launching needs a terminal.
 
 ## Development
 
 ```bash
-uv run pytest          # 42 tests
+uv run pytest          # 58 tests
 uvx ruff check src tests
 ```
 
@@ -160,6 +176,7 @@ src/kakao/
 ├── asr.py         translation engine
 ├── pipeline.py    wiring + lag instrumentation
 ├── overlay.py     transparent subtitle window
+├── hotkey.py      system-wide Ctrl+Alt+K (Win32, platform-guarded)
 ├── settings.py    JSON settings
 ├── ui.py          tray + settings dialog
 ├── app.py         entry point
@@ -247,7 +264,17 @@ icono → Iniciar** y pon tu vídeo.
 | **Ajustes…** | Dispositivo de salida, modelo, sincronización, tamaño de letra |
 | **Salir** | Cerrar la aplicación |
 
+**Ctrl+Alt+K** inicia y detiene desde cualquier sitio, sin ir a la bandeja. Si otra
+aplicación ya usa esa combinación, Kakao te avisa al arrancar en vez de quedarse sin
+atajo en silencio.
+
 Los ajustes se guardan en `%APPDATA%/Kakao/settings.json`.
+
+### Modelos
+
+En `Ajustes…` puedes elegir `small`, `medium` (por defecto) y `large-v3`. Más grande
+**no** es fiablemente mejor aquí: en los clips medidos, `large-v3` costó ~1 GB más de
+VRAM y no tradujo mejor que `medium`. Se ofrece para que lo juzgues con tu contenido.
 
 ### Modos de sincronización
 
@@ -326,13 +353,17 @@ Dichas claramente, en vez de escondidas:
   interpreta mal.
 - **~0.5 s de silencio** al cambiar de dispositivo de audio a mitad de reproducción.
   La mayor parte es Windows redirigiendo la salida; la captura se recupera sola.
-- **Algunas palabras sueltas todavía se traducen mal.**
+- **Algunas palabras sueltas todavía se traducen mal**, y de vez en cuando se inventa
+  una frase entera. Es el problema abierto principal. Y algo importante: son errores
+  **confiados** — el modelo reporta confianza normal mientras se equivoca —, así que
+  filtrar por confianza no los detecta (medido, no supuesto). Se han probado cinco
+  enfoques y cuatro empeoraron las cosas; ver `docs/research/` y DECISIONS.md.
 - **Aún no hay `.exe`**: hay que lanzarlo desde una terminal.
 
 ## Desarrollo
 
 ```bash
-uv run pytest          # 42 tests
+uv run pytest          # 58 tests
 uvx ruff check src tests
 ```
 
@@ -345,6 +376,7 @@ src/kakao/
 ├── asr.py         motor de traducción
 ├── pipeline.py    orquestación + medición del retraso
 ├── overlay.py     ventana transparente de subtítulos
+├── hotkey.py      atajo global Ctrl+Alt+K (Win32, con guarda de plataforma)
 ├── settings.py    ajustes en JSON
 ├── ui.py          bandeja + ventana de ajustes
 ├── app.py         punto de entrada
