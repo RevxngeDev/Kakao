@@ -78,10 +78,21 @@ as considered and rejected, not overlooked.
 
 ## Recommendation
 
-This study **strengthens the case for DD-05** and adds a second reason to do it
-(bilingual subtitles). It does not suggest copying anything else: the rest of
-Language Reactor's value lives in a product category — structured language
-learning — that Kakao's non-goals explicitly exclude.
+This study argued that DD-05 was worth doing for **two** reasons: quality and
+bilingual subtitles.
 
-Nothing here changes the near-term plan; it informs whether Phase 7(b) is worth the
-work. A measurement spike is still required before adopting (see DD-05).
+> **Updated 2026-08-01 after measuring it (see DD-05):** the *quality* half of that
+> argument **did not survive**. On the author's real content the current one-hop
+> path translated better, because it keeps access to the audio while translating,
+> whereas a text-MT model inherits and amplifies transcription errors. Two-stage was
+> marginally faster and cheap, but not more accurate.
+>
+> The **bilingual-subtitle** half stands, and the spike demonstrated its value:
+> seeing the Spanish exposed a hallucination that was invisible from the English
+> alone. So the Language Reactor idea worth taking is **showing both languages** —
+> as a feature, not as a quality fix.
+
+Nothing else here transfers: the rest of Language Reactor's value lives in
+structured language learning, a category Kakao's non-goals explicitly exclude, and
+its precision comes from reading platform subtitle tracks — which would require
+becoming a browser extension.

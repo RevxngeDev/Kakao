@@ -19,9 +19,14 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest>=8"]
-# Phase 0 VRAM probe only (scripts/spike_phase0.py). faster-whisper + CUDA wheels
-# are now runtime deps (Phase 3), so the spike group only needs the NVML binding.
-spike = ["nvidia-ml-py>=12"]
+# Throwaway measurement deps. NOT runtime: nothing in src/ imports these.
+#   nvidia-ml-py     -> VRAM probe (Phase 0 spike)
+#   transformers/... -> converts + tokenizes Opus-MT for the DD-05 two-stage spike
+spike = [
+    "nvidia-ml-py>=12",
+    "transformers>=4.40",
+    "sentencepiece>=0.2",
+]
 
 [build-system]
 requires = ["hatchling"]
