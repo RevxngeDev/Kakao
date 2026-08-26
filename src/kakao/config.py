@@ -8,7 +8,10 @@ from __future__ import annotations
 
 # -- ASR (D-009 measured, D-016/D-017 tuned) ---------------------------------
 MODEL = "medium"                  # Phase 0 winner; `small` is the fallback
-MODELS = ["medium", "small"]      # offered in the settings window
+# Offered in the settings window, smallest first. `large-v3` was measured to fit the
+# GTX 1650 (2525 MB, RTF 0.16, D-024) but translated WORSE than medium on the one
+# clip tested — it is offered to judge, not recommended (D-031).
+MODELS = ["small", "medium", "large-v3"]
 COMPUTE_TYPE = "int8"             # right for a GTX 1650 (no tensor cores)
 DEVICE = "cuda"
 BEAM_SIZE = 1                     # beam=5 measured worse (dropped ~9x), D-016
@@ -45,6 +48,14 @@ SYNC_LABELS = [("Equilibrado", "balanced"), ("Más rápido", "fast"), ("Más pre
 # -- Pipeline (D-005 / D-010) ------------------------------------------------
 MAX_LAG_S = 3.0                   # drop chunks staler than this
 QUEUE_SIZE = 8
+
+# -- Global hotkey (D-031) ---------------------------------------------------
+# Ctrl+Alt+K toggles Iniciar/Detener from anywhere. Qt shortcuts need focus, which
+# Kakao never takes, so this is registered with the OS — see kakao.hotkey.
+HOTKEY_ENABLED = True
+HOTKEY_MODIFIERS = 0x0002 | 0x0001  # MOD_CONTROL | MOD_ALT
+HOTKEY_VIRTUAL_KEY = 0x4B           # 'K'
+HOTKEY_LABEL = "Ctrl+Alt+K"         # shown to the user
 
 # -- Overlay -----------------------------------------------------------------
 FONT_FAMILY = "Segoe UI"

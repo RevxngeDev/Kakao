@@ -25,6 +25,7 @@ FORBIDDEN = {
 WIN32_ATTRS = {"windll", "WinDLL", "oledll"}
 WIN32_ALLOWLIST = {
     "overlay.py",  # WS_EX_TRANSPARENT click-through; guarded by sys.platform
+    "hotkey.py",   # RegisterHotKey + WM_HOTKEY; guarded by sys.platform
 }
 
 

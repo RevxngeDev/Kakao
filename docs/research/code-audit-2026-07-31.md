@@ -44,28 +44,27 @@
 
 ## 🟡 Architecture
 
-- [ ] **4. The UI layer reaches into the ASR/VAD internals.** `ui.py` does
-  `from kakao import asr, config, vad` to preload models, while ARCHITECTURE.md says
-  the tray controller is *not* responsible for audio or translation logic.
-  *Fix:* expose `pipeline.preload()` and let the UI call that.
+- [x] **4. The UI layer reaches into the ASR/VAD internals.** ✅ *Fixed 2026-08-01:*
+  `pipeline.preload_models()` added; `ui.py` no longer imports `asr` or `vad`.
 - [ ] **5. Spanish UI strings live in `config.py`** (`SYNC_LABELS`). D-007 separates
   English code from Spanish interface text; labels belong in the UI layer.
-- [ ] **6. Dead code.** `pipeline.SYNC_PRESETS` is a re-export nobody imports
-  (verified by grep). `_LanguageLock` in `asr.py` is unreachable while
-  `config.LANGUAGE = "es"` is pinned — fine as a feature, but never exercised in
-  the production path.
+- [x] **6. Dead code.** ✅ *Fixed 2026-08-01:* `pipeline.SYNC_PRESETS` re-export
+  removed. `_LanguageLock` kept — it is unreachable only while `LANGUAGE` is pinned,
+  and it is the mechanism a source-language selector would rely on.
 
 ## 🟢 Performance (all minor — the pipeline has huge headroom)
 
-- [ ] **7.** `_icon()` rebuilds a QPixmap + QPainter on *every* notification; there
-  are only three fixed colours. Trivially cacheable.
+- [~] **7.** `_icon()` rebuilds a QPixmap + QPainter on *every* notification.
+  **Rejected 2026-08-01 (D-031):** a micro-optimization with no measurable benefit;
+  recorded as known-and-declined rather than silently skipped.
 - [x] **8.** `_save_geometry()` writes the whole JSON on **every arrow-key press**
   in edit mode. ✅ *Fixed 2026-08-01:* arrow nudges go through a 400 ms debounce
   timer; an explicit save (Esc, close, mouse release) cancels the pending one.
 - [x] **9.** `SettingsDialog._save()` performs four separate file writes. ✅ *Fixed
   2026-08-01:* uses `Settings.update()` — one write. Covered by `test_update_writes_once`.
-- [ ] **10.** `VadSegmenter.feed()` `np.concatenate`s the whole retain buffer every
-  frame (~384 KB copied 10×/s). Negligible in practice; a ring buffer would avoid it.
+- [~] **10.** `VadSegmenter.feed()` `np.concatenate`s the whole retain buffer every
+  frame. **Rejected 2026-08-01 (D-031):** negligible at ~10× real-time headroom;
+  a ring buffer would add complexity for no measurable gain.
 
 ## 🔵 Security (low risk — local, single-user, offline)
 
@@ -80,14 +79,17 @@
 
 ## ⚪ Minor quality
 
-- [ ] **14.** `Overlay._wrap()` can append empty lines (text ending in a space),
-  consuming vertical space; returns bare `list` instead of `list[str]`.
+- [x] **14.** `Overlay._wrap()` empty lines. ✅ *Fixed 2026-08-01* while writing its
+  test; now typed `list[str]` and covered by `test_no_empty_lines_from_trailing_or_double_spaces`.
 - [ ] **15.** Quitting while `_starting` is true leaves the pipeline unstopped — the
   threads are daemons so the process exits, but the audio device stays open until then.
-- [ ] **16.** No tests for `_humanize()` or `Overlay._wrap()` — pure functions, the
-  cheapest coverage gap to close.
+- [x] **16.** No tests for `_humanize()` or `Overlay._wrap()`. ✅ *Fixed 2026-08-01:*
+  `tests/test_ui_helpers.py` (Qt runs offscreen for font metrics).
 
-## Suggested order
+## Standing
 
-**2 and 3** (real user-visible bugs), then **1** (restores a guarantee believed to
-exist), then **4, 6, 7–9** (cheap cleanup), then **16** (coverage).
+Closed: 1, 2, 3, 4, 6, 8, 9, 14, 16 (D-030, D-031).
+Rejected with reason: 7, 10 (micro-optimizations, no measurable gain).
+Still open: **5** (Spanish UI strings in `config.py`), **11** (raw exception text
+shown to the user), **15** (quit while starting leaves the pipeline unstopped).
+All three are minor and would mainly matter if the app were ever distributed.

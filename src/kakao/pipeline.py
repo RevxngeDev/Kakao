@@ -12,18 +12,26 @@ import time
 from collections.abc import Callable
 
 from kakao import config
-from kakao.asr import AsrEngine
+from kakao.asr import AsrEngine, load_model
 from kakao.audio.base import AudioSource
 from kakao.buffer import DropOldestQueue
-from kakao.vad import SpeechChunk, VadSegmenter
+from kakao.vad import SpeechChunk, VadSegmenter, load_silero
 
 SubtitleCallback = Callable[[str, float], None]  # (english_text, lag_seconds)
-
-SYNC_PRESETS = config.SYNC_PRESETS  # re-exported for convenience
 
 # A silence longer than this ends the "scene": the rolling ASR context is reset so
 # a new conversation is not conditioned on an unrelated one (D-025).
 _CONTEXT_RESET_GAP_S = 8.0
+
+
+def preload_models(model: str = config.MODEL) -> None:
+    """Load the ASR and VAD models ahead of time so Start is instant (D-027).
+
+    Exposed here so callers (the tray UI) do not have to reach into `kakao.asr` and
+    `kakao.vad` themselves — the control layer owns lifecycle, not audio internals.
+    """
+    load_model(model, config.DEVICE, config.COMPUTE_TYPE)
+    load_silero()
 
 
 class Pipeline:

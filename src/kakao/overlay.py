@@ -174,18 +174,21 @@ class Overlay(QWidget):
         painter.fillPath(path, QColor(255, 255, 255))
 
     @staticmethod
-    def _wrap(text: str, metrics: QFontMetrics, max_w: int) -> list:
-        lines = []
+    def _wrap(text: str, metrics: QFontMetrics, max_w: int) -> list[str]:
+        """Break `text` into lines that fit `max_w`. Never emits empty lines —
+        one would silently eat a line of vertical space."""
+        lines: list[str] = []
         for para in text.split("\n"):
             current = ""
-            for word in para.split(" "):
-                trial = word if not current else current + " " + word
+            for word in para.split():
+                trial = f"{current} {word}" if current else word
                 if not current or metrics.horizontalAdvance(trial) <= max_w:
                     current = trial
                 else:
                     lines.append(current)
                     current = word
-            lines.append(current)
+            if current:
+                lines.append(current)
         return lines
 
     # -- edit-mode move / resize -------------------------------------------

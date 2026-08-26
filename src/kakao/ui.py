@@ -21,10 +21,11 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
 )
 
-from kakao import asr, config, vad
+from kakao import config
 from kakao.audio.wasapi import WasapiLoopbackSource, list_output_devices
+from kakao.hotkey import GlobalHotkey
 from kakao.overlay import Overlay
-from kakao.pipeline import Pipeline
+from kakao.pipeline import Pipeline, preload_models
 from kakao.settings import Settings
 
 
@@ -71,6 +72,12 @@ class SettingsDialog(QDialog):
         self._model = QComboBox()
         self._model.addItems(config.MODELS)
         self._model.setCurrentText(settings.get("model", config.MODEL))
+        self._model.setToolTip(
+            "small: el más rápido y ligero, menor calidad.\n"
+            "medium: el equilibrio recomendado (por defecto).\n"
+            "large-v3: usa ~1 GB más de VRAM y no siempre traduce mejor —\n"
+            "pruébalo con tu contenido antes de dejarlo."
+        )
         form.addRow("Modelo:", self._model)
 
         self._sync = QComboBox()
@@ -136,7 +143,10 @@ class TrayController(QObject):
         menu.addAction(act_quit)
         self._tray.setContextMenu(menu)
         self._tray.show()
-        self._notify("Listo. Clic derecho en el icono para iniciar.")
+
+        self._hotkey = self._install_hotkey()
+        hint = f" Atajo: {config.HOTKEY_LABEL}." if self._hotkey else ""
+        self._notify(f"Listo. Clic derecho en el icono para iniciar.{hint}")
 
         self._error_sig.connect(self._show_error)
         self._degraded_sig.connect(lambda m: self._notify(m, title="Kakao — audio"))
@@ -154,13 +164,29 @@ class TrayController(QObject):
         else:
             self._preloaded.set()
 
+    def _install_hotkey(self) -> GlobalHotkey | None:
+        """Register the system-wide start/stop shortcut, if it is available."""
+        if not config.HOTKEY_ENABLED:
+            return None
+        hotkey = GlobalHotkey(
+            self.toggle,
+            modifiers=config.HOTKEY_MODIFIERS,
+            virtual_key=config.HOTKEY_VIRTUAL_KEY,
+        )
+        if hotkey.register(self._app, self._overlay.winId()):
+            return hotkey
+        # Another app owns the combination, or the platform has no implementation.
+        # Say so rather than losing the shortcut silently.
+        self._notify(
+            f"No se pudo registrar el atajo {config.HOTKEY_LABEL} "
+            "(otra aplicación lo está usando). Usa el menú del icono."
+        )
+        return None
+
     def _preload(self) -> None:
         try:
             self._notify_sig.emit("Preparando el modelo…")
-            asr.load_model(
-                self._settings.get("model", config.MODEL), config.DEVICE, config.COMPUTE_TYPE
-            )
-            vad.load_silero()
+            preload_models(self._settings.get("model", config.MODEL))
             self._notify_sig.emit("Listo para traducir.")
         except Exception as exc:  # surfaced, but the app stays usable
             self._error_sig.emit(str(exc))
@@ -244,6 +270,8 @@ class TrayController(QObject):
                 self._notify("Detén e inicia para aplicar el modelo/dispositivo.")
 
     def quit(self) -> None:
+        if self._hotkey is not None:
+            self._hotkey.unregister(self._app)
         self.stop()
         self._app.quit()
 
